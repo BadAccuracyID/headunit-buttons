@@ -1,0 +1,17 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.efran.buttons" android:versionCode="7" android:versionName="0.7">
+    <uses-sdk android:minSdkVersion="28" android:targetSdkVersion="32" />
+    <queries>
+        <package android:name="com.szchoiceway.eventcenter" />
+        <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent>
+    </queries>
+    <application android:label="Headunit Buttons" android:icon="@drawable/ic_buttons" android:theme="@android:style/Theme.Material.NoActionBar" android:allowBackup="false">
+        <meta-data android:name="xposedmodule" android:value="true" />
+        <meta-data android:name="xposeddescription" android:value="Capture and remap GT6 EventCenter button actions. Disabled by default." />
+        <meta-data android:name="xposedminversion" android:value="82" />
+        <meta-data android:name="xposedscope" android:resource="@array/xposed_scope" />
+        <activity android:name=".MainActivity" android:exported="true">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity>
+        <provider android:name=".ConfigProvider" android:authorities="com.efran.buttons.config" android:exported="true" />
+    </application>
+</manifest>

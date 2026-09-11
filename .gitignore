@@ -1,0 +1,10 @@
+build/
+*.apk
+*.apk.idsig
+*.keystore
+*.jks
+.deps/
+.DS_Store
+vendor/
+device-*/
+diagnostics/
