@@ -1,7 +1,7 @@
 # Headunit Buttons
 
 Capture and remap car buttons on a rooted GT6 Android headunit using an Xposed module.
-Version 0.7 has been tested with the `com.szchoiceway.eventcenter` firmware on GT6-CAR.
+Version 0.8 adds selection-aware CarPlay opening. Version 0.7 has been tested with the `com.szchoiceway.eventcenter` firmware on GT6-CAR.
 
 ## Verified behavior
 
@@ -94,7 +94,7 @@ Activation across another boot, separate long/double-press actions, and Siri-spe
 
 ## Diagnostics and tests
 
-`./test.sh` runs 64 host checks for mapping rules, configuration expiry, packet decoding, voice gesture handling, and camera/Home selection.
+`./test.sh` runs 68 host checks for mapping rules, configuration expiry, packet decoding, voice gesture handling, and camera/Home selection.
 These checks do not replace physical button tests.
 
 The app retains up to 100 recent events in memory and displays the newest 20.
@@ -114,3 +114,9 @@ Diagnostic recording itself does not consume input. Only explicitly enabled rema
 - [Vector](https://github.com/JingMatrix/Vector)
 
 This repository contains the app and its tests. It does not contain headunit firmware or KSW Toolkit code.
+
+## Selected CarPlay shortcut (0.8)
+
+Choose **Set Navi action → Open selected CarPlay app** when CarPlay Switch is installed. Navi then opens the receiver saved by the switcher. The switcher preserves an active DiPlay session when reopening its screen. Use CarPlay Switch to change receivers. Missing switcher or a rejected activity launch leaves the stock Navi action available.
+
+The updated hook requires EventCenter to restart or the headunit to reboot. Camera/power guards and the independent Voice-on camera/Home action remain active. The new selected-receiver route has host policy coverage; its physical and boot checks are pending.

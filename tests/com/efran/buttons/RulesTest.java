@@ -29,6 +29,12 @@ public final class RulesTest {
             expect(!Rules.validAction(rejected), "Invalid action rejected: " + rejected);
         expect(Rules.validAction("app:com.zjinnova.zlink"), "Package launch accepted");
         expect(Rules.validAction("block"), "Explicit suppression accepted");
+        expect(Rules.validAction(Rules.CARPLAY_SELECTED), "Selected receiver action accepted");
+        map.put(55, Rules.CARPLAY_SELECTED);
+        Rules.Snapshot selected = new Rules.Snapshot(true, 1000, map);
+        expect(Rules.CARPLAY_SELECTED.equals(selected.action(55, 1200, false)), "Navi opens selected receiver");
+        expect(selected.action(55, 1200, true) == null, "Selected receiver does not override camera or power mode");
+        expect(!Rules.validVoiceAction(Rules.CARPLAY_SELECTED), "Voice camera toggle remains independent");
         byte[] input = {(byte)0xF2, 0, (byte)0xA1, 3, 0x17, 20, 1, 0};
         expect(McuPacket.isButton(input), "CAN button packet recognized before dispatch");
         expect(McuPacket.describe(input).equals("MCU button 20 / state 1"), "Raw code preserves physical identity");

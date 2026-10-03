@@ -66,6 +66,14 @@ public final class ButtonHook implements IXposedHookLoadPackage {
                                 // executes once, including when its replacement action throws.
                                 param.args[0] = replacement;
                                 result = "routed to " + Rules.label(replacement);
+                            } else if (Rules.CARPLAY_SELECTED.equals(action)) {
+                                Context context = (Context) param.thisObject;
+                                Intent launch = new Intent().setClassName("com.efran.carplayswitch",
+                                        "com.shilapi.xcertplay.gt6switch.OpenSelectedActivity");
+                                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                                context.startActivity(launch);
+                                param.setResult(null);
+                                result = "opened selected CarPlay receiver";
                             } else {
                                 Context context = (Context) param.thisObject;
                                 Intent launch = context.getPackageManager().getLaunchIntentForPackage(action.substring(4));

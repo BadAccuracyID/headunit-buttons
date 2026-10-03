@@ -8,6 +8,7 @@ import java.util.Map;
 public final class Rules {
     public static final long LEASE_MS = 2500;
     public static final String CAMERA_HOME = "camera-home";
+    public static final String CARPLAY_SELECTED = "carplay-selected";
     public static final String CAMERA_PACKAGE = "com.ivicar.avm";
     public static final int[] OUTPUTS = {2, 3, 6, 9, 16, 48, 55, 85};
     public static final class Snapshot {
@@ -38,7 +39,7 @@ public final class Rules {
         }
     }
     public static boolean validAction(String action) {
-        if ("block".equals(action)) return true;
+        if ("block".equals(action) || CARPLAY_SELECTED.equals(action)) return true;
         if (action == null) return false;
         if (action.startsWith("app:")) return action.substring(4).matches("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+");
         if (action.startsWith("key:")) {
@@ -51,6 +52,7 @@ public final class Rules {
     }
     public static String actionLabel(String action) {
         if (CAMERA_HOME.equals(action)) return "360 camera / Home";
+        if (CARPLAY_SELECTED.equals(action)) return "Open selected CarPlay app";
         if ("block".equals(action)) return "Do nothing";
         if (action.startsWith("key:")) return label(Integer.parseInt(action.substring(4)));
         return "Open " + action.substring(4);

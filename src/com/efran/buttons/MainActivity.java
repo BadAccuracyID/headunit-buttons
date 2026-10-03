@@ -43,7 +43,7 @@ public final class MainActivity extends Activity {
         scroll.addView(root);
         setContentView(scroll);
         text(root, "Headunit Buttons", 28);
-        text(root, "Capture a button, then choose what it does. Version 0.7", 18);
+        text(root, "Capture a button, then choose what it does. Version 0.8", 18);
         status = text(root, "Checking connection...", 18);
         enabled = new Switch(this);
         enabled.setText("Enable remapping");
@@ -147,8 +147,8 @@ public final class MainActivity extends Activity {
                     }).setNegativeButton("Cancel", null).show();
             return;
         }
-        String[] choices = {"Keep original action", "Do nothing", "Next", "Previous", "Play / pause", "Home", "Mode", "Voice (firmware)", "Back", "Open an app"};
-        String[] actions = {null, "block", "key:2", "key:3", "key:6", "key:9", "key:16", "key:48", "key:85"};
+        String[] choices = {"Keep original action", "Do nothing", "Next", "Previous", "Play / pause", "Home", "Mode", "Voice (firmware)", "Back", "Open selected CarPlay app", "Open an app"};
+        String[] actions = {null, "block", "key:2", "key:3", "key:6", "key:9", "key:16", "key:48", "key:85", Rules.CARPLAY_SELECTED};
         new AlertDialog.Builder(this).setTitle(Rules.label(code) + " [" + code + "]")
                 .setItems(choices, (dialog, which) -> {
                     if (which == choices.length - 1) chooseApp(code);
