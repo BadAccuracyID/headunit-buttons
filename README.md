@@ -1,6 +1,7 @@
-# Headunit Buttons
+# GT6 Utility (Headunit Buttons)
 
-Capture and remap car buttons on a rooted GT6 Android headunit using an Xposed module.
+Capture and remap car buttons, and schedule screen brightness, on a rooted GT6 Android headunit using an Xposed module.
+Version 0.9 adds the brightness schedule and renames the app to GT6 Utility; the package stays `com.efran.buttons`.
 Version 0.8 adds selection-aware CarPlay opening. Version 0.7 has been tested with the `com.szchoiceway.eventcenter` firmware on GT6-CAR.
 
 ## Verified behavior
@@ -120,3 +121,25 @@ This repository contains the app and its tests. It does not contain headunit fir
 Choose **Set Navi action → Open selected CarPlay app** when CarPlay Switch is installed. Navi then opens the receiver saved by the switcher. The switcher preserves an active DiPlay session when reopening its screen. Use CarPlay Switch to change receivers. Missing switcher or a rejected activity launch leaves the stock Navi action available.
 
 The updated hook requires EventCenter to restart or the headunit to reboot. Camera/power guards and the independent Voice-on camera/Home action remain active. The new selected-receiver route has host policy coverage; its physical and boot checks are pending.
+
+## Screen brightness schedule (0.9)
+
+The schedule sets the GT6 brightness level, the same 0-100 value as the GT6 Settings slider. Four periods each start at a configurable time and last until the next one; the last period wraps past midnight. Each period has one level for headlights off and one for headlights on.
+
+| Period | Starts | Headlights off | Headlights on |
+| --- | --- | --- | --- |
+| Morning | 05:30 | 100% | 100% |
+| Noon | 11:00 | 100% | 100% |
+| Afternoon | 15:00 | 100% | 100% |
+| Evening | 18:00 | 25% | 50% |
+
+The schedule is off on a fresh install. Turn on **Brightness schedule**, then tap a period to change its start time or levels.
+
+The adapter runs inside EventCenter and applies a level the way the GT6 Settings slider does. It writes EventCenter's brightness record and sends the level to the MCU backlight (`SendBLVal`). It then lets EventCenter set Android's brightness and the SystemUI slider (`sendBrightnessToSystemUI`). If the OEM night brightness option is on, the headlights-on level goes to the night record that EventCenter uses.
+
+- A level is applied only when the period or headlight state changes, or when the schedule is edited or turned on. A level set by hand with a slider lasts until the next change.
+- Reverse, camera, powered-off and backlight-off states keep stock handling. A pending change applies when they end.
+- A failed configuration poll applies nothing. The minimum level is 5%.
+- The app shows the last level the adapter applied and why.
+
+The hook change needs EventCenter to restart, or the headunit to reboot. `./test.sh` covers the schedule logic; physical brightness tests are pending.

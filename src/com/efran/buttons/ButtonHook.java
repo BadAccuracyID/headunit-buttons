@@ -35,6 +35,7 @@ public final class ButtonHook implements IXposedHookLoadPackage {
     private volatile Service hookedService;
     private volatile Rules.Snapshot voiceSnapshot = new Rules.Snapshot(false, 0, Collections.emptyMap());
     private final VoiceGesture voiceGesture = new VoiceGesture();
+    private volatile BrightnessAdapter brightness;
 
     @Override public void handleLoadPackage(XC_LoadPackage.LoadPackageParam load) {
         if (!"com.szchoiceway.eventcenter".equals(load.packageName)) return;
@@ -48,6 +49,7 @@ public final class ButtonHook implements IXposedHookLoadPackage {
             poweredOff = booleanField(service, "m_bPowerOff");
             installPacketObserver(load.classLoader);
             installSerialObserver(load.classLoader);
+            installBrightness(service);
             XposedBridge.hookMethod(keyMethod, new XC_MethodHook() {
                 @Override protected void beforeHookedMethod(MethodHookParam param) {
                     int code = ((Integer) param.args[0]) & 255;
@@ -112,6 +114,14 @@ public final class ButtonHook implements IXposedHookLoadPackage {
             XposedBridge.log("HeadunitButtons: ProcessCanKey adapter installed; remapping defaults off");
         } catch (Throwable error) {
             XposedBridge.log("HeadunitButtons: unsupported firmware; stock behavior retained: " + error);
+        }
+    }
+    private void installBrightness(Class<?> service) {
+        try {
+            brightness = BrightnessAdapter.install(service);
+            XposedBridge.log("HeadunitButtons: brightness schedule adapter installed; schedule defaults off");
+        } catch (Throwable error) {
+            XposedBridge.log("HeadunitButtons: brightness schedule unavailable: " + error);
         }
     }
     private void installPacketObserver(ClassLoader loader) {
@@ -235,6 +245,8 @@ public final class ButtonHook implements IXposedHookLoadPackage {
                 events.drainTo(pending);
                 request.putStringArrayList("events", pending);
                 request.putBoolean("packetHookReady", packetHookReady);
+                BrightnessAdapter schedule = brightness;
+                request.putString("brightnessStatus", schedule == null ? "Not supported by this EventCenter" : schedule.status());
                 Bundle response = context.getContentResolver().call(ConfigProvider.URI, "poll", null, request);
                 if (response == null) throw new IllegalStateException("No configuration");
                 rawUntil = response.getLong("rawUntil", 0);
@@ -252,6 +264,13 @@ public final class ButtonHook implements IXposedHookLoadPackage {
                 String voiceAction = response.getString("voiceAction");
                 if (Rules.validVoiceAction(voiceAction)) voiceActions.put(20, voiceAction);
                 voiceSnapshot = new Rules.Snapshot(response.getBoolean("enabled", false), requestStarted, voiceActions);
+                Service service = hookedService;
+                if (schedule != null && service != null) {
+                    boolean protectedMode = reverse.getBoolean(service) || rearCamera.getBoolean(service)
+                            || poweredOff.getBoolean(service);
+                    schedule.tick(service, response.getBoolean("brightnessEnabled", false),
+                            BrightnessSchedule.parse(response.getString("brightnessSchedule")), protectedMode);
+                }
             } catch (Throwable error) {
                 snapshot = new Rules.Snapshot(false, 0, Collections.emptyMap());
                 voiceSnapshot = new Rules.Snapshot(false, 0, Collections.emptyMap());

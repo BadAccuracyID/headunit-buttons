@@ -17,6 +17,7 @@ public final class ConfigProvider extends ContentProvider {
     private final ArrayList<String> events = new ArrayList<>();
     private volatile long heartbeat;
     private boolean packetHookReady;
+    private String brightnessStatus;
     private SharedPreferences prefs;
     @Override public boolean onCreate() {
         prefs = getContext().getSharedPreferences("rules", 0);
@@ -36,6 +37,8 @@ public final class ConfigProvider extends ContentProvider {
             heartbeat = SystemClock.elapsedRealtime();
             if (extras != null) {
                 packetHookReady = extras.getBoolean("packetHookReady", false);
+                String reported = extras.getString("brightnessStatus");
+                brightnessStatus = reported != null && reported.length() < 200 ? reported : null;
                 ArrayList<String> incoming = extras.getStringArrayList("events");
                 if (incoming != null) for (String event : incoming) {
                     if (event != null && event.length() < 300) events.add(event);
@@ -51,10 +54,13 @@ public final class ConfigProvider extends ContentProvider {
                     mappings.putString(entry.getKey().substring(4), (String) entry.getValue());
             }
             out.putBundle("mappings", mappings);
+            out.putBoolean("brightnessEnabled", prefs.getBoolean("brightness_enabled", false));
+            out.putString("brightnessSchedule", prefs.getString("brightness_schedule", BrightnessSchedule.DEFAULT));
         } else if ("status".equals(method) && ownCaller()) {
             out.putBoolean("connected", heartbeat > 0 && SystemClock.elapsedRealtime() - heartbeat < Rules.LEASE_MS);
             out.putBoolean("packetHookReady", packetHookReady);
             out.putStringArrayList("events", new ArrayList<>(events));
+            out.putString("brightnessStatus", brightnessStatus);
         } else if ("clear".equals(method) && ownCaller()) {
             events.clear();
         } else throw new SecurityException("Unsupported operation");

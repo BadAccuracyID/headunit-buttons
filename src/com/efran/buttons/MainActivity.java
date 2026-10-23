@@ -2,6 +2,7 @@ package com.efran.buttons;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.TimePickerDialog;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ResolveInfo;
@@ -26,6 +27,8 @@ public final class MainActivity extends Activity {
     private LinearLayout captured;
     private TextView status;
     private Switch enabled;
+    private TextView brightnessStatus;
+    private LinearLayout brightnessRows;
     private String previousEvents = "";
     private boolean connected;
     private final Runnable refresh = new Runnable() {
@@ -42,8 +45,22 @@ public final class MainActivity extends Activity {
         root.setPadding(gutter, dp(16), gutter, dp(32));
         scroll.addView(root);
         setContentView(scroll);
-        text(root, "Headunit Buttons", 28);
-        text(root, "Capture a button, then choose what it does. Version 0.8", 18);
+        text(root, "GT6 Utility", 28);
+        text(root, "Screen brightness schedule and button remapping. Version 0.9", 18);
+        text(root, "Screen brightness", 24);
+        brightnessStatus = text(root, "Checking brightness...", 18);
+        Switch schedule = new Switch(this);
+        schedule.setText("Brightness schedule");
+        schedule.setTextSize(20);
+        schedule.setMinHeight(dp(64));
+        schedule.setChecked(prefs.getBoolean("brightness_enabled", false));
+        schedule.setOnCheckedChangeListener((button, checked) -> prefs.edit().putBoolean("brightness_enabled", checked).apply());
+        root.addView(schedule);
+        text(root, "Sets the GT6 brightness when a period starts and when the headlights switch. A level you set by hand lasts until the next change.", 16);
+        brightnessRows = column(root);
+        renderBrightness();
+        text(root, "Buttons", 24);
+        text(root, "Capture a button, then choose what it does.", 18);
         status = text(root, "Checking connection...", 18);
         enabled = new Switch(this);
         enabled.setText("Enable remapping");
@@ -89,6 +106,9 @@ public final class MainActivity extends Activity {
             status.setText(connected ? (data.getBoolean("packetHookReady") ? "MCU capture and button handler connected" : "Button handler connected; MCU capture unavailable") : "Button handler not connected. Capture is unavailable.");
             // A saved enabled switch can always be turned off, including when disconnected.
             enabled.setEnabled(connected || enabled.isChecked());
+            String reported = data == null ? null : data.getString("brightnessStatus");
+            brightnessStatus.setText(!connected ? "EventCenter hook not connected. Brightness is not scheduled."
+                    : reported != null ? reported : "Brightness adapter not reported. Restart EventCenter to load version 0.9.");
             ArrayList<String> events = data == null ? new ArrayList<>() : data.getStringArrayList("events");
             if (events == null) events = new ArrayList<>();
             String fingerprint = events.toString();
@@ -118,6 +138,47 @@ public final class MainActivity extends Activity {
         } catch (RuntimeException error) {
             status.setText("Cannot read button status: " + error.getClass().getSimpleName());
         }
+    }
+    private BrightnessSchedule brightnessSchedule() {
+        BrightnessSchedule saved = BrightnessSchedule.parse(prefs.getString("brightness_schedule", null));
+        return saved != null ? saved : BrightnessSchedule.parse(BrightnessSchedule.DEFAULT);
+    }
+    private void renderBrightness() {
+        brightnessRows.removeAllViews();
+        BrightnessSchedule schedule = brightnessSchedule();
+        for (int period = 0; period < BrightnessSchedule.NAMES.length; period++) {
+            int index = period;
+            button(brightnessRows, BrightnessSchedule.NAMES[period] + " from " + BrightnessSchedule.time(schedule.start(period))
+                    + "\nHeadlights off " + schedule.levelFor(period, false) + "%  ·  on " + schedule.levelFor(period, true) + "%")
+                    .setOnClickListener(view -> editPeriod(index));
+        }
+    }
+    private void editPeriod(int period) {
+        BrightnessSchedule schedule = brightnessSchedule();
+        String[] choices = {"Start time: " + BrightnessSchedule.time(schedule.start(period)),
+                "Headlights off: " + schedule.levelFor(period, false) + "%",
+                "Headlights on: " + schedule.levelFor(period, true) + "%"};
+        new AlertDialog.Builder(this).setTitle(BrightnessSchedule.NAMES[period])
+                .setItems(choices, (dialog, which) -> {
+                    if (which == 0) {
+                        int start = schedule.start(period);
+                        new TimePickerDialog(this, (picker, hour, minute) -> saveBrightness(schedule.withStart(period, hour * 60 + minute)),
+                                start / 60, start % 60, true).show();
+                    } else chooseLevel(period, which == 2);
+                }).setNegativeButton("Cancel", null).show();
+    }
+    private void chooseLevel(int period, boolean headlightsOn) {
+        String[] levels = new String[(100 - BrightnessSchedule.MIN_LEVEL) / 5 + 1];
+        for (int index = 0; index < levels.length; index++) levels[index] = (100 - index * 5) + "%";
+        new AlertDialog.Builder(this).setTitle(BrightnessSchedule.NAMES[period] + ", headlights " + (headlightsOn ? "on" : "off"))
+                .setItems(levels, (dialog, which) -> saveBrightness(brightnessSchedule().withLevel(period, headlightsOn, 100 - which * 5)))
+                .setNegativeButton("Cancel", null).show();
+    }
+    private void saveBrightness(BrightnessSchedule schedule) {
+        if (schedule == null) return;
+        prefs.edit().putString("brightness_schedule", schedule.encode()).apply();
+        renderBrightness();
+        Toast.makeText(this, "Brightness schedule saved", Toast.LENGTH_SHORT).show();
     }
     private void renderMappings() {
         mappings.removeAllViews();

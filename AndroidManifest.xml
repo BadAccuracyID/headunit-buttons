@@ -1,13 +1,13 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.efran.buttons" android:versionCode="8" android:versionName="0.8">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.efran.buttons" android:versionCode="9" android:versionName="0.9">
     <uses-sdk android:minSdkVersion="28" android:targetSdkVersion="32" />
     <queries>
         <package android:name="com.szchoiceway.eventcenter" />
         <package android:name="com.efran.carplayswitch" />
         <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent>
     </queries>
-    <application android:label="Headunit Buttons" android:icon="@drawable/ic_buttons" android:theme="@android:style/Theme.Material.NoActionBar" android:allowBackup="false">
+    <application android:label="GT6 Utility" android:icon="@drawable/ic_buttons" android:theme="@android:style/Theme.Material.NoActionBar" android:allowBackup="false">
         <meta-data android:name="xposedmodule" android:value="true" />
-        <meta-data android:name="xposeddescription" android:value="Capture and remap GT6 EventCenter button actions. Disabled by default." />
+        <meta-data android:name="xposeddescription" android:value="GT6 brightness schedule and button remapping in EventCenter. Both disabled by default." />
         <meta-data android:name="xposedminversion" android:value="82" />
         <meta-data android:name="xposedscope" android:resource="@array/xposed_scope" />
         <activity android:name=".MainActivity" android:exported="true">
