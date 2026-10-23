@@ -46,7 +46,7 @@ public final class MainActivity extends Activity {
         scroll.addView(root);
         setContentView(scroll);
         text(root, "GT6 Utility", 28);
-        text(root, "Screen brightness schedule and button remapping. Version 0.9", 18);
+        text(root, "Screen brightness schedule and button remapping. Version 0.10", 18);
         text(root, "Screen brightness", 24);
         brightnessStatus = text(root, "Checking brightness...", 18);
         Switch schedule = new Switch(this);
@@ -56,7 +56,7 @@ public final class MainActivity extends Activity {
         schedule.setChecked(prefs.getBoolean("brightness_enabled", false));
         schedule.setOnCheckedChangeListener((button, checked) -> prefs.edit().putBoolean("brightness_enabled", checked).apply());
         root.addView(schedule);
-        text(root, "Sets the GT6 brightness when a period starts and when the headlights switch. A level you set by hand lasts until the next change.", 16);
+        text(root, "Sets the GT6 brightness when each period starts. A level you set by hand lasts until the next period. The car still dims the screen by itself when the headlights are on.", 16);
         brightnessRows = column(root);
         renderBrightness();
         text(root, "Buttons", 24);
@@ -108,7 +108,7 @@ public final class MainActivity extends Activity {
             enabled.setEnabled(connected || enabled.isChecked());
             String reported = data == null ? null : data.getString("brightnessStatus");
             brightnessStatus.setText(!connected ? "EventCenter hook not connected. Brightness is not scheduled."
-                    : reported != null ? reported : "Brightness adapter not reported. Restart EventCenter to load version 0.9.");
+                    : reported != null ? reported : "Brightness adapter not reported. Restart EventCenter to load this version.");
             ArrayList<String> events = data == null ? new ArrayList<>() : data.getStringArrayList("events");
             if (events == null) events = new ArrayList<>();
             String fingerprint = events.toString();
@@ -140,8 +140,7 @@ public final class MainActivity extends Activity {
         }
     }
     private BrightnessSchedule brightnessSchedule() {
-        BrightnessSchedule saved = BrightnessSchedule.parse(prefs.getString("brightness_schedule", null));
-        return saved != null ? saved : BrightnessSchedule.parse(BrightnessSchedule.DEFAULT);
+        return BrightnessSchedule.parseOrDefault(prefs.getString("brightness_schedule", null));
     }
     private void renderBrightness() {
         brightnessRows.removeAllViews();
@@ -149,29 +148,28 @@ public final class MainActivity extends Activity {
         for (int period = 0; period < BrightnessSchedule.NAMES.length; period++) {
             int index = period;
             button(brightnessRows, BrightnessSchedule.NAMES[period] + " from " + BrightnessSchedule.time(schedule.start(period))
-                    + "\nHeadlights off " + schedule.levelFor(period, false) + "%  ·  on " + schedule.levelFor(period, true) + "%")
+                    + "  ·  " + schedule.level(period) + "%")
                     .setOnClickListener(view -> editPeriod(index));
         }
     }
     private void editPeriod(int period) {
         BrightnessSchedule schedule = brightnessSchedule();
         String[] choices = {"Start time: " + BrightnessSchedule.time(schedule.start(period)),
-                "Headlights off: " + schedule.levelFor(period, false) + "%",
-                "Headlights on: " + schedule.levelFor(period, true) + "%"};
+                "Brightness: " + schedule.level(period) + "%"};
         new AlertDialog.Builder(this).setTitle(BrightnessSchedule.NAMES[period])
                 .setItems(choices, (dialog, which) -> {
                     if (which == 0) {
                         int start = schedule.start(period);
                         new TimePickerDialog(this, (picker, hour, minute) -> saveBrightness(schedule.withStart(period, hour * 60 + minute)),
                                 start / 60, start % 60, true).show();
-                    } else chooseLevel(period, which == 2);
+                    } else chooseLevel(period);
                 }).setNegativeButton("Cancel", null).show();
     }
-    private void chooseLevel(int period, boolean headlightsOn) {
+    private void chooseLevel(int period) {
         String[] levels = new String[(100 - BrightnessSchedule.MIN_LEVEL) / 5 + 1];
         for (int index = 0; index < levels.length; index++) levels[index] = (100 - index * 5) + "%";
-        new AlertDialog.Builder(this).setTitle(BrightnessSchedule.NAMES[period] + ", headlights " + (headlightsOn ? "on" : "off"))
-                .setItems(levels, (dialog, which) -> saveBrightness(brightnessSchedule().withLevel(period, headlightsOn, 100 - which * 5)))
+        new AlertDialog.Builder(this).setTitle(BrightnessSchedule.NAMES[period] + " brightness")
+                .setItems(levels, (dialog, which) -> saveBrightness(brightnessSchedule().withLevel(period, 100 - which * 5)))
                 .setNegativeButton("Cancel", null).show();
     }
     private void saveBrightness(BrightnessSchedule schedule) {

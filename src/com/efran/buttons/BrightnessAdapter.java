@@ -10,21 +10,17 @@ import de.robv.android.xposed.XposedHelpers;
 /**
  * Applies the brightness schedule inside EventCenter, the way the GT6 Settings slider does:
  * the level goes to the MCU backlight (SendBLVal) and to Android's brightness and the SystemUI
- * slider (sendBrightnessToSystemUI). It acts only when the period or headlight state changes, so a
- * manual slider change lasts until the next change.
+ * slider (sendBrightnessToSystemUI). It acts only when a period starts or the schedule changes, so
+ * a manual slider change lasts until the next period.
  */
 final class BrightnessAdapter {
     static final String DAY = "COM.SZCHOICEWAY_BRIGHTNESS_SETTINGS";
     static final String NIGHT = "KSW_SETTINGS_DISPLAY_BRIGHTNESS_NIGHT";
-    private static final String NIGHT_SHOW = "KSW_SETTINGS_DISPLAY_BRIGHTNESS_NIGHT_SHOW";
-    private static final String BACKLIGHT_CONTROL = "KSW_BACKLIGHT_CONTROL_INDEX";
-    private final Field headlights;
     private final Field backlightOff;
     private String applied;
     private volatile String status = "Schedule off";
 
-    private BrightnessAdapter(Field headlights, Field backlightOff) {
-        this.headlights = headlights;
+    private BrightnessAdapter(Field backlightOff) {
         this.backlightOff = backlightOff;
     }
 
@@ -35,7 +31,7 @@ final class BrightnessAdapter {
         service.getDeclaredMethod("SendBLVal", byte.class, byte.class);
         service.getDeclaredMethod("sendBrightnessToSystemUI");
         service.getDeclaredField("mSysProviderOpt");
-        return new BrightnessAdapter(field(service, "mSmallLightOn"), field(service, "mBackLightOff"));
+        return new BrightnessAdapter(field(service, "mBackLightOff"));
     }
 
     String status() { return status; }
@@ -49,11 +45,8 @@ final class BrightnessAdapter {
             return;
         }
         try {
-            boolean lights = headlights.getBoolean(service);
-            Calendar now = Calendar.getInstance();
-            int minute = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE);
-            int period = schedule.periodAt(minute);
-            String state = schedule.encode() + "|" + period + "|" + lights;
+            int period = schedule.periodAt(minuteNow());
+            String state = schedule.encode() + "|" + period;
             if (state.equals(applied)) return;
             if (XposedHelpers.getObjectField(service, "mSysProviderOpt") == null) {
                 status = "Waiting for EventCenter settings";
@@ -64,33 +57,29 @@ final class BrightnessAdapter {
                 status = "Waiting: camera or screen off";
                 return;
             }
-            int level = schedule.level(minute, lights);
+            int level = schedule.level(period);
             applied = state;
-            String reason = BrightnessSchedule.NAMES[period] + ", headlights " + (lights ? "on" : "off");
-            new Handler(service.getMainLooper()).post(() -> apply(service, level, lights, reason));
+            String reason = BrightnessSchedule.NAMES[period];
+            new Handler(service.getMainLooper()).post(() -> apply(service, level, reason));
         } catch (Throwable error) {
             status = "Brightness failed: " + error.getClass().getSimpleName();
             Log.w("HeadunitButtons", "Brightness schedule failed; brightness unchanged", error);
         }
     }
 
-    private void apply(Service service, int level, boolean lights, String reason) {
+    private void apply(Service service, int level, String reason) {
         try {
             Object records = XposedHelpers.getObjectField(service, "mSysProviderOpt");
-            boolean nightShow = (Boolean) XposedHelpers.callMethod(records, "getRecordBoolean", NIGHT_SHOW, false);
-            boolean backlightControl = (Boolean) XposedHelpers.callMethod(records, "getRecordBoolean", BACKLIGHT_CONTROL, false);
-            // Write the record EventCenter reads for the current headlight state, so its own
-            // headlight handling and the Settings app show the same level.
-            String key = nightShow && !backlightControl && lights ? NIGHT : DAY;
-            XposedHelpers.callMethod(service, "putSettingInt", key, level);
-            int day = (Integer) XposedHelpers.callMethod(service, "getSettingInt", DAY, 50);
+            // The day record is the GT6 slider's value. The night record is left as it is: on the
+            // W205 the MCU ignores it and dims for the headlights by itself.
+            XposedHelpers.callMethod(service, "putSettingInt", DAY, level);
             int night = (Integer) XposedHelpers.callMethod(records, "getRecordInteger", NIGHT, 50);
-            XposedHelpers.callMethod(service, "SendBLVal", (byte) day, (byte) night);
+            XposedHelpers.callMethod(service, "SendBLVal", (byte) level, (byte) night);
             XposedHelpers.callMethod(service, "sendBrightnessToSystemUI");
             status = level + "%: " + reason + " (set " + BrightnessSchedule.time(minuteNow()) + ")";
-            Log.i("HeadunitButtons", "BRIGHTNESS " + level + " " + reason + " record=" + key);
+            Log.i("HeadunitButtons", "BRIGHTNESS " + level + " " + reason);
         } catch (Throwable error) {
-            // No retry loop: the next period or headlight change tries again.
+            // No retry loop: the next period or schedule change tries again.
             status = "Brightness failed: " + error.getClass().getSimpleName();
             Log.w("HeadunitButtons", "Brightness apply failed; brightness unchanged", error);
         }

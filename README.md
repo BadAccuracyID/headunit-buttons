@@ -122,24 +122,26 @@ Choose **Set Navi action → Open selected CarPlay app** when CarPlay Switch is 
 
 The updated hook requires EventCenter to restart or the headunit to reboot. Camera/power guards and the independent Voice-on camera/Home action remain active. The new selected-receiver route has host policy coverage; its physical and boot checks are pending.
 
-## Screen brightness schedule (0.9)
+## Screen brightness schedule (0.10)
 
-The schedule sets the GT6 brightness level, the same 0-100 value as the GT6 Settings slider. Four periods each start at a configurable time and last until the next one; the last period wraps past midnight. Each period has one level for headlights off and one for headlights on.
+The schedule sets the GT6 brightness level, the same 0-100 value as the GT6 Settings slider. Four periods each start at a configurable time and last until the next one; the last period wraps past midnight.
 
-| Period | Starts | Headlights off | Headlights on |
-| --- | --- | --- | --- |
-| Morning | 05:30 | 100% | 100% |
-| Noon | 11:00 | 100% | 100% |
-| Afternoon | 15:00 | 100% | 100% |
-| Evening | 18:00 | 25% | 50% |
+| Period | Starts | Level |
+| --- | --- | --- |
+| Morning | 05:30 | 100% |
+| Noon | 11:00 | 100% |
+| Afternoon | 15:00 | 100% |
+| Evening | 18:00 | 50% |
 
-The schedule is off on a fresh install. Turn on **Brightness schedule**, then tap a period to change its start time or levels.
+The schedule is off on a fresh install. Turn on **Brightness schedule**, then tap a period to change its start time or level.
 
-The adapter runs inside EventCenter and applies a level the way the GT6 Settings slider does. It writes EventCenter's brightness record and sends the level to the MCU backlight (`SendBLVal`). It then lets EventCenter set Android's brightness and the SystemUI slider (`sendBrightnessToSystemUI`). If the OEM night brightness option is on, the headlights-on level goes to the night record that EventCenter uses.
+The adapter runs inside EventCenter and applies a level the way the GT6 Settings slider does. It writes EventCenter's brightness record and sends the level to the MCU backlight (`SendBLVal`). It then lets EventCenter set Android's brightness and the SystemUI slider (`sendBrightnessToSystemUI`).
 
-- A level is applied only when the period or headlight state changes, or when the schedule is edited or turned on. A level set by hand with a slider lasts until the next change.
+- A level is applied when a period starts, when the schedule is edited, and when it is turned on. A level set by hand with a slider lasts until the next period.
 - Reverse, camera, powered-off and backlight-off states keep stock handling. A pending change applies when they end.
 - A failed configuration poll applies nothing. The minimum level is 5%.
 - The app shows the last level the adapter applied and why.
 
-The hook change needs EventCenter to restart, or the headunit to reboot. `./test.sh` covers the schedule logic; physical brightness tests are pending.
+Headlights: 0.9 had separate levels for headlights on and off. On the tested W205, the MCU never reports the light switch to EventCenter. A full capture of every MCU packet showed nothing while the switch was toggled, and `KSW_DATA_SMALL_LIGHT_ON` stays 0. The screen still dims when the headlights are on. That dimming happens below Android: it continued with EventCenter's night mode on and a night level of 100 sent to the MCU (`F2 00 6C 03 01 19 64`). So 0.10 schedules by time only. A saved 0.9 schedule falls back to the default.
+
+The hook change needs EventCenter to restart, or the headunit to reboot. `./test.sh` covers the schedule logic.

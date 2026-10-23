@@ -55,7 +55,7 @@ public final class ConfigProvider extends ContentProvider {
             }
             out.putBundle("mappings", mappings);
             out.putBoolean("brightnessEnabled", prefs.getBoolean("brightness_enabled", false));
-            out.putString("brightnessSchedule", prefs.getString("brightness_schedule", BrightnessSchedule.DEFAULT));
+            out.putString("brightnessSchedule", BrightnessSchedule.parseOrDefault(prefs.getString("brightness_schedule", null)).encode());
         } else if ("status".equals(method) && ownCaller()) {
             out.putBoolean("connected", heartbeat > 0 && SystemClock.elapsedRealtime() - heartbeat < Rules.LEASE_MS);
             out.putBoolean("packetHookReady", packetHookReady);
