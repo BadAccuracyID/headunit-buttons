@@ -1,6 +1,7 @@
 # GT6 Utility (Headunit Buttons)
 
 Capture and remap car buttons, and schedule screen brightness, on a rooted GT6 Android headunit using an Xposed module.
+Version 0.11 fixes diagnostic recording restarting after boot. Recording now lasts at most 60 seconds, can be stopped, and is cleared when the app process restarts.
 Version 0.9 adds the brightness schedule and renames the app to GT6 Utility; the package stays `com.efran.buttons`.
 Version 0.8 adds selection-aware CarPlay opening. Version 0.7 has been tested with the `com.szchoiceway.eventcenter` firmware on GT6-CAR.
 
@@ -100,13 +101,14 @@ These checks do not replace physical button tests.
 
 The app retains up to 100 recent events in memory and displays the newest 20.
 Mappings persist across app restarts.
-**Record all MCU packets for 10 minutes** enables additional serial and packet logging:
+**Record all MCU packets for 60 seconds** enables additional serial and packet logging:
 
 ```sh
 adb -s YOUR_DEVICE logcat -s HeadunitButtons HeadunitSerial
 ```
 
 The ADB launch option `--ez capture_raw true` also starts that diagnostic window.
+The app's stop button cancels recording early. The recording deadline is never saved across process restarts or reboots.
 Diagnostic recording itself does not consume input. Only explicitly enabled remapping changes button handling.
 
 ## References

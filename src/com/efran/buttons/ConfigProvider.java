@@ -19,8 +19,11 @@ public final class ConfigProvider extends ContentProvider {
     private boolean packetHookReady;
     private String brightnessStatus;
     private SharedPreferences prefs;
+    private long rawUntil;
     @Override public boolean onCreate() {
         prefs = getContext().getSharedPreferences("rules", 0);
+        // elapsedRealtime resets at boot. A persisted deadline can reactivate old captures.
+        prefs.edit().remove("rawUntil").apply();
         return true;
     }
     private boolean ownCaller() { return Binder.getCallingUid() == Process.myUid(); }
@@ -46,7 +49,7 @@ public final class ConfigProvider extends ContentProvider {
                 while (events.size() > 100) events.remove(0);
             }
             out.putBoolean("enabled", prefs.getBoolean("enabled", false));
-            out.putLong("rawUntil", prefs.getLong("rawUntil", 0));
+            out.putLong("rawUntil", rawUntil);
             out.putString("voiceAction", prefs.getString("voice_20", null));
             Bundle mappings = new Bundle();
             for (Map.Entry<String, ?> entry : prefs.getAll().entrySet()) {
@@ -57,10 +60,14 @@ public final class ConfigProvider extends ContentProvider {
             out.putBoolean("brightnessEnabled", prefs.getBoolean("brightness_enabled", false));
             out.putString("brightnessSchedule", BrightnessSchedule.parseOrDefault(prefs.getString("brightness_schedule", null)).encode());
         } else if ("status".equals(method) && ownCaller()) {
+            out.putBoolean("recording", SystemClock.elapsedRealtime() < rawUntil);
             out.putBoolean("connected", heartbeat > 0 && SystemClock.elapsedRealtime() - heartbeat < Rules.LEASE_MS);
             out.putBoolean("packetHookReady", packetHookReady);
             out.putStringArrayList("events", new ArrayList<>(events));
             out.putString("brightnessStatus", brightnessStatus);
+        } else if ("capture".equals(method) && ownCaller()) {
+            rawUntil = extras != null && extras.getBoolean("enabled")
+                    ? SystemClock.elapsedRealtime() + 60000 : 0;
         } else if ("clear".equals(method) && ownCaller()) {
             events.clear();
         } else throw new SecurityException("Unsupported operation");

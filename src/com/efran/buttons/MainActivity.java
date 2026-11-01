@@ -37,7 +37,10 @@ public final class MainActivity extends Activity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         prefs = getSharedPreferences("rules", 0);
-        if (getIntent().getBooleanExtra("capture_raw", false)) prefs.edit().putLong("rawUntil", SystemClock.elapsedRealtime() + 600000).apply();
+        if (getIntent().getBooleanExtra("capture_raw", false)) {
+            getIntent().removeExtra("capture_raw");
+            setRawCapture(true);
+        }
         ScrollView scroll = new ScrollView(this);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -83,11 +86,12 @@ public final class MainActivity extends Activity {
             refreshStatus();
         });
         captured = column(root);
-        Button record = button(root, "Record all MCU packets for 10 minutes");
+        Button record = button(root, "Record all MCU packets for 60 seconds");
         record.setOnClickListener(view -> {
-            prefs.edit().putLong("rawUntil", SystemClock.elapsedRealtime() + 600000).apply();
-            Toast.makeText(this, "Recording diagnostic packets to ADB log for 10 minutes", Toast.LENGTH_LONG).show();
+            setRawCapture(true);
+            Toast.makeText(this, "Recording diagnostic packets for 60 seconds; recording stops on app restart", Toast.LENGTH_LONG).show();
         });
+        button(root, "Stop diagnostic recording").setOnClickListener(view -> setRawCapture(false));
         text(root, "Setup", 24);
         text(root, "This preview needs an Xposed-compatible framework on the headunit. Enable this module for com.szchoiceway.eventcenter. The module loads when EventCenter next starts.", 16);
         text(root, "Voice on, Star and Navi have been captured on this headunit. Voice off is unidentified. Tel currently reports a switch to A20. Voice on can open an app or do nothing.", 16);
@@ -96,7 +100,15 @@ public final class MainActivity extends Activity {
     @Override protected void onResume() { super.onResume(); handler.post(refresh); }
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        if (intent.getBooleanExtra("capture_raw", false)) prefs.edit().putLong("rawUntil", SystemClock.elapsedRealtime() + 600000).apply();
+        if (intent.getBooleanExtra("capture_raw", false)) {
+            intent.removeExtra("capture_raw");
+            setRawCapture(true);
+        }
+    }
+    private void setRawCapture(boolean enabled) {
+        Bundle request = new Bundle();
+        request.putBoolean("enabled", enabled);
+        getContentResolver().call(ConfigProvider.URI, "capture", null, request);
     }
     @Override protected void onPause() { handler.removeCallbacks(refresh); super.onPause(); }
     private void refreshStatus() {
