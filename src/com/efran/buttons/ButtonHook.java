@@ -149,21 +149,28 @@ public final class ButtonHook implements IXposedHookLoadPackage {
     }
     private void handleVoice(XC_MethodHook.MethodHookParam param, byte[] data) {
         try {
+            int state = data[6] & 255;
+            long now = SystemClock.elapsedRealtime();
+            // Finish an owned gesture before reading mode/configuration. A camera
+            // transition or an unavailable service must not leak its tail to stock.
+            if (voiceGesture.decide(state, now, false, false) == VoiceGesture.CONSUME) { param.setResult(null); return; }
+            if (state != 1) return;
             Service service = hookedService;
             if (service == null) { voiceGesture.reset(); return; }
-            boolean protectedMode = reverse.getBoolean(service) || rearCamera.getBoolean(service)
-                    || poweredOff.getBoolean(service);
             Object mipi = XposedHelpers.getObjectField(service, "mMipiModeUtil");
-            if (mipi != null) {
-                Object mode = XposedHelpers.callMethod(mipi, "getCurrentMode");
-                protectedMode |= mode instanceof String && ((String) mode).startsWith("MODE_REVERSE");
-            }
-            long now = SystemClock.elapsedRealtime();
+            String mode = mipi == null ? null : String.valueOf(XposedHelpers.callMethod(mipi, "getCurrentMode"));
+            Object camera = XposedHelpers.getObjectField(service, "cameraUtilXYQ");
+            boolean cameraReversing = camera != null && Boolean.TRUE.equals(XposedHelpers.callMethod(camera, "isReverse"));
+            boolean protectedMode = Rules.voiceProtected(reverse.getBoolean(service) || cameraReversing, rearCamera.getBoolean(service),
+                    poweredOff.getBoolean(service), XposedHelpers.getIntField(service, "mGearType"), mode);
             String action = voiceSnapshot.action(20, now, protectedMode);
             boolean supported = Rules.validVoiceAction(action);
-            int decision = voiceGesture.decide(data[6] & 255, now, supported, protectedMode);
+            int decision = voiceGesture.decide(state, now, supported, protectedMode);
             if (decision == VoiceGesture.CONSUME) { param.setResult(null); return; }
-            if (decision != VoiceGesture.TRY_ACTION) return;
+            if (decision != VoiceGesture.TRY_ACTION) {
+                Log.i("HeadunitButtons", "VOICE_PASS protected=" + protectedMode + " supported=" + supported + " mode=" + mode);
+                return;
+            }
             String foreground = "";
             if (Rules.CAMERA_HOME.equals(action)) {
                 Class<?> firmwareUtils = XposedHelpers.findClass("com.szchoiceway.eventcenter.EventUtils", service.getClassLoader());

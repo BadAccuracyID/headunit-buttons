@@ -67,14 +67,47 @@ public final class RulesTest {
         expect(voice.decide(0, 2300, false, false) == VoiceGesture.CONSUME, "Existing gesture finishes even if disabled mid-press");
         expect(voice.decide(1, 2400, false, false) == VoiceGesture.PASS, "Next press respects disabled mapping");
         voice.accepted(3000);
-        expect(voice.decide(2, 3100, true, true) == VoiceGesture.PASS, "Camera transition clears consumed gesture");
-        expect(voice.decide(0, 3200, true, false) == VoiceGesture.PASS, "Cleared gesture does not consume later release");
+        expect(voice.decide(2, 3100, true, true) == VoiceGesture.CONSUME, "Camera transition cannot leak an accepted hold into stock Navi");
+        expect(voice.decide(0, 3200, true, true) == VoiceGesture.CONSUME, "Accepted release stays owned during protection");
         voice.accepted(4000);
         expect(voice.decide(1, 14001, true, false) == VoiceGesture.TRY_ACTION, "Missing release cannot latch forever");
         voice.accepted(5000);
         expect(voice.decide(0, 4999, true, false) == VoiceGesture.PASS, "Clock reset clears latch");
         voice.accepted(6000);
         expect(voice.decide(9, 6050, true, false) == VoiceGesture.PASS, "Unknown voice state remains stock");
+        voice.accepted(7000);
+        expect(voice.decide(1, 7250, true, false) == VoiceGesture.CONSUME, "Duplicate down window is inclusive");
+        expect(voice.decide(1, 7300, true, false) == VoiceGesture.TRY_ACTION, "A new down recovers from missing release without ten-second silence");
+        expect(voice.decide(0, 7350, true, false) == VoiceGesture.PASS, "Failed replacement launch leaves its own release stock");
+        voice.accepted(8000);
+        expect(voice.decide(1, 8300, true, true) == VoiceGesture.PASS, "New protected press stays stock after missing release");
+        expect(voice.decide(0, 8350, true, false) == VoiceGesture.PASS, "Protected press release stays stock");
+        voice.accepted(9000);
+        expect(voice.decide(1, 9300, false, false) == VoiceGesture.PASS, "New press honors a disabled mapping");
+        expect(voice.decide(2, 9400, false, false) == VoiceGesture.PASS, "Disabled press hold stays stock");
+        voice.accepted(10000);
+        expect(voice.decide(2, 21001, true, true) == VoiceGesture.CONSUME, "An owned long hold cannot expire into stock navigation");
+        expect(voice.decide(0, 22000, false, true) == VoiceGesture.CONSUME, "Long hold release finishes without a stock action");
+        expect(!Rules.voiceProtected(false, false, false, 2, "MODE_REVERSE_360"), "Ordinary 360 view allows its Voice camera toggle");
+        expect(Rules.voiceProtected(true, false, false, 2, "MODE_REVERSE_360"), "Real reverse protects the 360 view");
+        expect(Rules.voiceProtected(false, true, false, 2, "MODE_REVERSE_360"), "Backcar flag still protects the 360 view");
+        expect(Rules.voiceProtected(false, false, true, 2, "MODE_ANDROID"), "Power-off remains protected");
+        for (String mode : new String[]{"MODE_REVERSE", "MODE_REVERSE_ORIGINAL", "MODE_REVERSE_FUTURE"})
+            expect(Rules.voiceProtected(false, false, false, 2, mode), "Reverse mode remains protected: " + mode);
+        expect(!Rules.voiceProtected(false, false, false, 2, null), "Absent MIPI object does not block normal Voice");
+        expect(Rules.voiceProtected(false, false, false, 3, "MODE_REVERSE_360"), "Android 360 reverse gear protects view even without old backcar flags");
+        voice.accepted(25000);
+        expect(voice.decide(1, 25020, false, false) == VoiceGesture.CONSUME, "Owned duplicate down is consumed before service/config lookup");
+        expect(voice.decide(0, 25040, false, false) == VoiceGesture.CONSUME, "Release remains owned after unavailable preflight context");
+        // Model the relevant firmware latch: stock hold(13/20) and release(14)
+        // emit Navi. Accepted Voice tails must never reach that path.
+        for (int staleButton : new int[]{13, 14, 20}) {
+            voice.accepted(30000);
+            int stockNavi = 0;
+            if (voice.decide(2, 30200, true, true) == VoiceGesture.PASS && (staleButton == 13 || staleButton == 20)) stockNavi++;
+            if (voice.decide(0, 30300, true, true) == VoiceGesture.PASS && staleButton == 14) stockNavi++;
+            expect(stockNavi == 0, "Accepted Voice cannot dispatch stale stock Navi latch " + staleButton);
+        }
         expect(Rules.validVoiceAction(Rules.CAMERA_HOME), "Voice camera toggle accepted");
         expect(!Rules.validAction(Rules.CAMERA_HOME), "Camera toggle cannot enter the semantic adapter");
         expect(Rules.voiceGoesHome(Rules.CAMERA_HOME, "com.ivicar.avm"), "Visible camera toggles Home");

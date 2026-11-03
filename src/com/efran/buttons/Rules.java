@@ -64,4 +64,10 @@ public final class Rules {
     public static boolean voiceGoesHome(String action, String foregroundPackage) {
         return CAMERA_HOME.equals(action) && CAMERA_PACKAGE.equals(foregroundPackage);
     }
+    public static boolean voiceProtected(boolean reverse, boolean rearCamera, boolean powerOff, int gear, String mipiMode) {
+        // show360Dialog() uses MODE_REVERSE_360 for ordinary 360 views too.
+        // Actual reverse still wins through either flag or another reverse mode.
+        return reverse || rearCamera || powerOff || gear == 3 || (mipiMode != null
+                && mipiMode.startsWith("MODE_REVERSE") && !"MODE_REVERSE_360".equals(mipiMode));
+    }
 }
