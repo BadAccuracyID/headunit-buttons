@@ -1,7 +1,9 @@
 # GT6 Utility (Headunit Buttons)
 
 Capture and remap car buttons, and schedule screen brightness, on a rooted GT6 Android headunit using an Xposed module.
-Candidate version 0.12 fixes Voice gesture handling across camera transitions and missing releases. It has not been installed or physically tested.
+Version 0.13 is installed with Media Remote 0.14. It adds the captured CAN Voice signal alongside the normal MCU input.
+Four quick Voice presses and a one-second hold passed the parked check.
+Version 0.12 fixes gesture handling across camera transitions and missing releases, but the first physical check still missed Voice input.
 Version 0.11 fixes diagnostic recording restarting after boot. Recording now lasts at most 60 seconds, can be stopped, and is cleared when the app process restarts.
 Version 0.9 adds the brightness schedule and renames the app to GT6 Utility; the package stays `com.efran.buttons`.
 Version 0.8 adds selection-aware CarPlay opening. Version 0.7 has been tested with the `com.szchoiceway.eventcenter` firmware on GT6-CAR.
@@ -97,12 +99,14 @@ The exported configuration provider accepts this app and EventCenter's UID; othe
 
 Earlier builds passed short physical camera/Home and Navi/ZLink tests on the GT6-CAR.
 On November 3, the user reported missed Voice presses and unintended Navi actions during longer use.
-Candidate 0.12 addresses identified code paths. Its physical checks, boot checks, and long-hold behavior remain pending.
+Version 0.12 addressed identified gesture paths but still missed presses that lacked an MCU event.
+Version 0.13 adds the captured CAN signal. Quick presses and a one-second hold passed the parked check.
+Longer road use, another reboot, a full ignition cycle, and physical reverse transitions remain unverified for 0.13.
 Separate long/double-press actions and Siri-specific commands remain unimplemented.
 
 ## Diagnostics and tests
 
-`./test.sh` passes 91 policy checks and 28 brightness schedule checks.
+`./test.sh` passes 91 policy checks, 28 brightness schedule checks, and 112 Voice source checks.
 The policy checks cover mapping, configuration expiry, packet decoding, Voice gestures, reverse protection, and camera/Home selection.
 These checks do not replace physical button tests.
 
@@ -155,16 +159,36 @@ Headlights: 0.9 had separate levels for headlights on and off. On the tested W20
 
 The hook change needs EventCenter to restart, or the headunit to reboot. `./test.sh` covers the schedule logic.
 
-## Candidate 0.12: Voice reliability
+## Voice reliability: 0.12 gesture fixes and 0.13 CAN fallback
 
 The earlier adapter could release an accepted Voice gesture to stock handling when the camera changed MIPI mode.
 The firmware uses a shared saved button for hold/release handling. An old saved value can therefore trigger Navi from a Voice tail.
-Candidate 0.12 consumes accepted tails before checking the current service, configuration, or mode.
+Version 0.12 consumes accepted tails before checking the current service, configuration, or mode.
 It also replaces the ten-second missing-release lockout with the 250 ms duplicate-down window.
 
 Passive November 3 observations did not capture a failed Voice press. The Navi explanation comes from the matching installed firmware and regression checks.
 Normal camera views now permit Voice camera/Home actions. Actual reverse remains protected, including the Android 360 path that uses a separate reverse flag.
 
-Both the GT6 Utility 0.12 and Media Remote 0.13 candidates need an EventCenter restart to load their updated hooks.
-They remain uninstalled while the user is driving. Parked checks must cover quick presses, holds, camera transitions, both mute buttons, and reverse protection.
-The 250 ms recovery rule still needs a physical long-hold check; host tests cannot establish the MCU's repeat behavior.
+The first installed pair, GT6 Utility 0.12 and Media Remote 0.13, still failed the physical Voice check.
+An isolated three-press test produced one normal MCU event and one CAN pulse. One requested press appeared in neither observed route.
+The CAN pulse is ID `0x133`, payload byte 1, bit `0x10`. Mute uses a separate bit, `0x40`.
+
+Version 0.13 accepts this CAN input through an in-process callback registered on the EventCenter service.
+Media Remote 0.14 validates samples from its owned capture and invokes the callback. Missing or older modules receive nothing.
+The callback follows the firmware's `mHandler` and `mProcessHandler` queues before checking the mapping and current reverse protection.
+It does not inject synthetic MCU packets or perform camera work in the serial reader.
+
+The source policy requires an initial idle sample. Repeated high samples do not repeat an action.
+An accepted CAN press suppresses a duplicate MCU press while held or within 250 ms after release.
+A CAN rise within 250 ms of an accepted MCU action is also suppressed. The first action has no added delay.
+A 1500 ms sample gap expires duplicate ownership but preserves the physical baseline; sparse reports must not discard a real rise.
+Capture stop resets CAN state. MCU hold/release ownership remains independent, so stopping capture cannot expose a consumed tail to stock handling.
+Callbacks older than 800 ms are discarded.
+
+Both updated APKs were installed and loaded after an EventCenter restart on November 3.
+The user confirmed all four quick Voice presses alternated camera/Home, without Navi. Each used the CAN route.
+One press also produced an MCU event; the adapter suppressed it, avoiding a second camera action.
+The user then confirmed both mute buttons worked with the camera open and a one-second Voice hold produced only one action.
+
+The installed checks are short parked tests. A press absent from both received streams cannot be recovered by this fallback.
+Reverse protection has source and host-test coverage; an actual reverse transition was not part of this physical check.

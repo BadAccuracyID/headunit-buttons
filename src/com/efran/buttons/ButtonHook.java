@@ -4,6 +4,7 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.SystemClock;
 import android.util.Log;
 import java.lang.reflect.Field;
@@ -16,6 +17,7 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BiConsumer;
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
@@ -35,6 +37,8 @@ public final class ButtonHook implements IXposedHookLoadPackage {
     private volatile Service hookedService;
     private volatile Rules.Snapshot voiceSnapshot = new Rules.Snapshot(false, 0, Collections.emptyMap());
     private final VoiceGesture voiceGesture = new VoiceGesture();
+    private final VoiceSources voiceSources = new VoiceSources();
+    private static final String CAN_VOICE_BRIDGE = "com.efran.buttons.CAN_VOICE_V1";
     private volatile BrightnessAdapter brightness;
 
     @Override public void handleLoadPackage(XC_LoadPackage.LoadPackageParam load) {
@@ -101,12 +105,14 @@ public final class ButtonHook implements IXposedHookLoadPackage {
                 @Override protected void afterHookedMethod(MethodHookParam param) {
                     if (!param.hasThrowable()) {
                         hookedService = (Service) param.thisObject;
+                        installCanVoiceBridge(hookedService);
                         startPolling(hookedService.getApplicationContext());
                     }
                 }
             });
             XposedHelpers.findAndHookMethod(service, "onDestroy", new XC_MethodHook() {
                 @Override protected void beforeHookedMethod(MethodHookParam param) {
+                    XposedHelpers.removeAdditionalInstanceField(param.thisObject, CAN_VOICE_BRIDGE);
                     hookedService = null;
                     stopPolling();
                 }
@@ -147,61 +153,95 @@ public final class ButtonHook implements IXposedHookLoadPackage {
             XposedBridge.log("HeadunitButtons: MCU packet observer unavailable: " + error);
         }
     }
+    private void installCanVoiceBridge(Service value) {
+        try {
+            BiConsumer<Integer, Long> callback = (state, at) -> {
+                // Follow the same two queues as normal MCU frames, so an earlier
+                // gear update cannot be overtaken by this CAN action.
+                Handler ingress = (Handler) XposedHelpers.getObjectField(value, "mHandler");
+                if (ingress == null) return;
+                ingress.post(() -> {
+                    if (hookedService != value) return;
+                    // Firmware creates this second Handler asynchronously.
+                    Handler handler = (Handler) XposedHelpers.getObjectField(value, "mProcessHandler");
+                    if (handler == null) return;
+                    handler.post(() -> {
+                        if (hookedService != value) return;
+                        try {
+                            long now = SystemClock.elapsedRealtime();
+                            if (voiceSources.canSample(state, at, now) && performVoiceAction(now, "CAN"))
+                                voiceSources.canAccepted();
+                        } catch (Throwable error) {
+                            Log.w("HeadunitButtons", "CAN Voice action failed", error);
+                        }
+                    });
+                });
+            };
+            XposedHelpers.setAdditionalInstanceField(value, CAN_VOICE_BRIDGE, callback);
+            XposedBridge.log("HeadunitButtons: CAN Voice bridge installed");
+        } catch (Throwable error) {
+            XposedBridge.log("HeadunitButtons: CAN Voice unavailable; MCU route retained: " + error);
+        }
+    }
     private void handleVoice(XC_MethodHook.MethodHookParam param, byte[] data) {
         try {
             int state = data[6] & 255;
             long now = SystemClock.elapsedRealtime();
-            // Finish an owned gesture before reading mode/configuration. A camera
-            // transition or an unavailable service must not leak its tail to stock.
+            // An accepted MCU gesture owns its tails even if CAN capture stops.
             if (voiceGesture.decide(state, now, false, false) == VoiceGesture.CONSUME) { param.setResult(null); return; }
             if (state != 1) return;
-            Service service = hookedService;
-            if (service == null) { voiceGesture.reset(); return; }
-            Object mipi = XposedHelpers.getObjectField(service, "mMipiModeUtil");
-            String mode = mipi == null ? null : String.valueOf(XposedHelpers.callMethod(mipi, "getCurrentMode"));
-            Object camera = XposedHelpers.getObjectField(service, "cameraUtilXYQ");
-            boolean cameraReversing = camera != null && Boolean.TRUE.equals(XposedHelpers.callMethod(camera, "isReverse"));
-            boolean protectedMode = Rules.voiceProtected(reverse.getBoolean(service) || cameraReversing, rearCamera.getBoolean(service),
-                    poweredOff.getBoolean(service), XposedHelpers.getIntField(service, "mGearType"), mode);
-            String action = voiceSnapshot.action(20, now, protectedMode);
-            boolean supported = Rules.validVoiceAction(action);
-            int decision = voiceGesture.decide(state, now, supported, protectedMode);
-            if (decision == VoiceGesture.CONSUME) { param.setResult(null); return; }
-            if (decision != VoiceGesture.TRY_ACTION) {
-                Log.i("HeadunitButtons", "VOICE_PASS protected=" + protectedMode + " supported=" + supported + " mode=" + mode);
+            if (voiceSources.rawDuplicate(now)) {
+                voiceGesture.accepted(now);
+                param.setResult(null);
+                Log.i("HeadunitButtons", "VOICE_DUPLICATE MCU after CAN");
                 return;
             }
-            String foreground = "";
-            if (Rules.CAMERA_HOME.equals(action)) {
-                Class<?> firmwareUtils = XposedHelpers.findClass("com.szchoiceway.eventcenter.EventUtils", service.getClassLoader());
-                // The AVM app uses display 2. The firmware's filtered helper only checks
-                // display 0 and misses it, so read the focused task across displays.
-                foreground = (String) XposedHelpers.callStaticMethod(firmwareUtils, "getTopPackageNameUnfiltered", service);
-                Log.i("HeadunitButtons", "VOICE_FOREGROUND " + foreground);
+            if (performVoiceAction(now, "MCU")) {
+                voiceSources.rawAccepted(now);
+                voiceGesture.accepted(now);
+                param.setResult(null);
             }
-            String result;
-            if (Rules.voiceGoesHome(action, foreground)) {
-                // Use the firmware's Home key injection, as its stock Star/Home handler does.
-                XposedHelpers.callMethod(service, "sendKeyDownUpSync", 3);
-                result = "Home (camera foreground)";
-            } else if (!"block".equals(action)) {
-                String target = Rules.CAMERA_HOME.equals(action) ? Rules.CAMERA_PACKAGE : action.substring(4);
-                Intent launch = service.getPackageManager().getLaunchIntentForPackage(target);
-                if (launch == null) return;
-                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                service.startActivity(launch);
-                result = "opened " + target;
-            } else result = "blocked";
-            // Suppress this press only after the requested launch is accepted. Finish the
-            // same gesture without allowing its hold/release to invoke stock navigation.
-            voiceGesture.accepted(now);
-            param.setResult(null);
-            Log.i("HeadunitButtons", "VOICE_ON " + result);
-            events.offer("voice|" + now + "|" + result);
         } catch (Throwable error) {
             voiceGesture.reset();
             Log.w("HeadunitButtons", "Voice override failed; stock retained", error);
         }
+    }
+    private boolean performVoiceAction(long now, String source) throws Throwable {
+        Service service = hookedService;
+        if (service == null) return false;
+        Object mipi = XposedHelpers.getObjectField(service, "mMipiModeUtil");
+        String mode = mipi == null ? null : String.valueOf(XposedHelpers.callMethod(mipi, "getCurrentMode"));
+        Object camera = XposedHelpers.getObjectField(service, "cameraUtilXYQ");
+        boolean cameraReversing = camera != null && Boolean.TRUE.equals(XposedHelpers.callMethod(camera, "isReverse"));
+        boolean protectedMode = Rules.voiceProtected(reverse.getBoolean(service) || cameraReversing, rearCamera.getBoolean(service),
+                poweredOff.getBoolean(service), XposedHelpers.getIntField(service, "mGearType"), mode);
+        String action = voiceSnapshot.action(20, now, protectedMode);
+        if (!Rules.validVoiceAction(action)) {
+            Log.i("HeadunitButtons", "VOICE_PASS source=" + source + " protected=" + protectedMode + " mode=" + mode);
+            return false;
+        }
+        String foreground = "";
+        if (Rules.CAMERA_HOME.equals(action)) {
+            Class<?> firmwareUtils = XposedHelpers.findClass("com.szchoiceway.eventcenter.EventUtils", service.getClassLoader());
+            // AVM runs on display 2; the filtered helper only checks display 0.
+            foreground = (String) XposedHelpers.callStaticMethod(firmwareUtils, "getTopPackageNameUnfiltered", service);
+            Log.i("HeadunitButtons", "VOICE_FOREGROUND " + foreground);
+        }
+        String result;
+        if (Rules.voiceGoesHome(action, foreground)) {
+            XposedHelpers.callMethod(service, "sendKeyDownUpSync", 3);
+            result = "Home (camera foreground)";
+        } else if (!"block".equals(action)) {
+            String target = Rules.CAMERA_HOME.equals(action) ? Rules.CAMERA_PACKAGE : action.substring(4);
+            Intent launch = service.getPackageManager().getLaunchIntentForPackage(target);
+            if (launch == null) return false;
+            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            service.startActivity(launch);
+            result = "opened " + target;
+        } else result = "blocked";
+        Log.i("HeadunitButtons", "VOICE_ON source=" + source + " " + result);
+        events.offer("voice|" + now + "|" + result);
+        return true;
     }
     private static Field booleanField(Class<?> type, String name) throws Exception {
         Field field = type.getDeclaredField(name);
