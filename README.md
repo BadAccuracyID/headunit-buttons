@@ -3,7 +3,7 @@
 Capture and remap car buttons, and schedule screen brightness, on a rooted GT6 Android headunit using an Xposed module.
 Version 0.14 removes the CAN Voice fallback. Voice uses normal MCU input only.
 Media Remote 0.15 and later remove mute capture and stop stale CAN forwarding.
-The paired update was installed on November 6; physical camera and car-status validation remains pending.
+The paired update was installed on November 6. Later parked tests passed for Voice, AC temperature updates, and indicator-camera behavior.
 Earlier parked tests passed, but the user later reported unreliable Voice, AC display, and indicator-camera behavior.
 
 Version 0.12 fixes gesture handling across camera transitions and missing releases, but the first physical check still missed Voice input.
