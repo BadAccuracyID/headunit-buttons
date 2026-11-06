@@ -4,8 +4,6 @@ PROJECT="$(cd "$(dirname "$0")" && pwd)"
 JDK="${BUTTONS_JDK:-${JAVA_HOME:-/Applications/Android Studio.app/Contents/jbr/Contents/Home}}"
 OUT="$(mktemp -d)"
 trap 'rm -rf "$OUT"' EXIT
-"$JDK/bin/javac" --release 8 -d "$OUT" "$PROJECT/src/com/efran/buttons/Rules.java" "$PROJECT/src/com/efran/buttons/McuPacket.java" "$PROJECT/src/com/efran/buttons/VoiceGesture.java" "$PROJECT/src/com/efran/buttons/VoiceSources.java" "$PROJECT/tests/com/efran/buttons/VoiceSourcesTest.java" "$PROJECT/src/com/efran/buttons/BrightnessSchedule.java" "$PROJECT/tests/com/efran/buttons/RulesTest.java" "$PROJECT/tests/com/efran/buttons/BrightnessScheduleTest.java"
+"$JDK/bin/javac" --release 8 -d "$OUT" "$PROJECT/src/com/efran/buttons/Rules.java" "$PROJECT/src/com/efran/buttons/McuPacket.java" "$PROJECT/src/com/efran/buttons/VoiceGesture.java" "$PROJECT/src/com/efran/buttons/BrightnessSchedule.java" "$PROJECT/tests/com/efran/buttons/RulesTest.java" "$PROJECT/tests/com/efran/buttons/BrightnessScheduleTest.java"
 "$JDK/bin/java" -cp "$OUT" com.efran.buttons.RulesTest
 "$JDK/bin/java" -cp "$OUT" com.efran.buttons.BrightnessScheduleTest
-
-"$JDK/bin/java" -cp "$OUT" com.efran.buttons.VoiceSourcesTest

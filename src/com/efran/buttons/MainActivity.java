@@ -49,7 +49,7 @@ public final class MainActivity extends Activity {
         scroll.addView(root);
         setContentView(scroll);
         text(root, "GT6 Utility", 28);
-        text(root, "Screen brightness schedule and button remapping. Version 0.10", 18);
+        text(root, "Screen brightness schedule and button remapping. Version 0.14", 18);
         text(root, "Screen brightness", 24);
         brightnessStatus = text(root, "Checking brightness...", 18);
         Switch schedule = new Switch(this);

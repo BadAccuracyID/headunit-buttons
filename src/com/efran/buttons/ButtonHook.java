@@ -4,7 +4,6 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
-import android.os.Handler;
 import android.os.SystemClock;
 import android.util.Log;
 import java.lang.reflect.Field;
@@ -17,7 +16,6 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.function.BiConsumer;
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
@@ -37,8 +35,6 @@ public final class ButtonHook implements IXposedHookLoadPackage {
     private volatile Service hookedService;
     private volatile Rules.Snapshot voiceSnapshot = new Rules.Snapshot(false, 0, Collections.emptyMap());
     private final VoiceGesture voiceGesture = new VoiceGesture();
-    private final VoiceSources voiceSources = new VoiceSources();
-    private static final String CAN_VOICE_BRIDGE = "com.efran.buttons.CAN_VOICE_V1";
     private volatile BrightnessAdapter brightness;
 
     @Override public void handleLoadPackage(XC_LoadPackage.LoadPackageParam load) {
@@ -105,14 +101,12 @@ public final class ButtonHook implements IXposedHookLoadPackage {
                 @Override protected void afterHookedMethod(MethodHookParam param) {
                     if (!param.hasThrowable()) {
                         hookedService = (Service) param.thisObject;
-                        installCanVoiceBridge(hookedService);
                         startPolling(hookedService.getApplicationContext());
                     }
                 }
             });
             XposedHelpers.findAndHookMethod(service, "onDestroy", new XC_MethodHook() {
                 @Override protected void beforeHookedMethod(MethodHookParam param) {
-                    XposedHelpers.removeAdditionalInstanceField(param.thisObject, CAN_VOICE_BRIDGE);
                     hookedService = null;
                     stopPolling();
                 }
@@ -153,51 +147,14 @@ public final class ButtonHook implements IXposedHookLoadPackage {
             XposedBridge.log("HeadunitButtons: MCU packet observer unavailable: " + error);
         }
     }
-    private void installCanVoiceBridge(Service value) {
-        try {
-            BiConsumer<Integer, Long> callback = (state, at) -> {
-                // Follow the same two queues as normal MCU frames, so an earlier
-                // gear update cannot be overtaken by this CAN action.
-                Handler ingress = (Handler) XposedHelpers.getObjectField(value, "mHandler");
-                if (ingress == null) return;
-                ingress.post(() -> {
-                    if (hookedService != value) return;
-                    // Firmware creates this second Handler asynchronously.
-                    Handler handler = (Handler) XposedHelpers.getObjectField(value, "mProcessHandler");
-                    if (handler == null) return;
-                    handler.post(() -> {
-                        if (hookedService != value) return;
-                        try {
-                            long now = SystemClock.elapsedRealtime();
-                            if (voiceSources.canSample(state, at, now) && performVoiceAction(now, "CAN"))
-                                voiceSources.canAccepted();
-                        } catch (Throwable error) {
-                            Log.w("HeadunitButtons", "CAN Voice action failed", error);
-                        }
-                    });
-                });
-            };
-            XposedHelpers.setAdditionalInstanceField(value, CAN_VOICE_BRIDGE, callback);
-            XposedBridge.log("HeadunitButtons: CAN Voice bridge installed");
-        } catch (Throwable error) {
-            XposedBridge.log("HeadunitButtons: CAN Voice unavailable; MCU route retained: " + error);
-        }
-    }
     private void handleVoice(XC_MethodHook.MethodHookParam param, byte[] data) {
         try {
             int state = data[6] & 255;
             long now = SystemClock.elapsedRealtime();
-            // An accepted MCU gesture owns its tails even if CAN capture stops.
+            // Finish an accepted MCU gesture before reading service or mode state.
             if (voiceGesture.decide(state, now, false, false) == VoiceGesture.CONSUME) { param.setResult(null); return; }
             if (state != 1) return;
-            if (voiceSources.rawDuplicate(now)) {
-                voiceGesture.accepted(now);
-                param.setResult(null);
-                Log.i("HeadunitButtons", "VOICE_DUPLICATE MCU after CAN");
-                return;
-            }
             if (performVoiceAction(now, "MCU")) {
-                voiceSources.rawAccepted(now);
                 voiceGesture.accepted(now);
                 param.setResult(null);
             }

@@ -1,8 +1,11 @@
 # GT6 Utility (Headunit Buttons)
 
 Capture and remap car buttons, and schedule screen brightness, on a rooted GT6 Android headunit using an Xposed module.
-Version 0.13 is installed with Media Remote 0.14. It adds the captured CAN Voice signal alongside the normal MCU input.
-Four quick Voice presses and a one-second hold passed the parked check.
+Version 0.14 removes the CAN Voice fallback. Voice uses normal MCU input only.
+Media Remote 0.15 and later remove mute capture and stop stale CAN forwarding.
+The paired update was installed on November 6; physical camera and car-status validation remains pending.
+Earlier parked tests passed, but the user later reported unreliable Voice, AC display, and indicator-camera behavior.
+
 Version 0.12 fixes gesture handling across camera transitions and missing releases, but the first physical check still missed Voice input.
 Version 0.11 fixes diagnostic recording restarting after boot. Recording now lasts at most 60 seconds, can be stopped, and is cleared when the app process restarts.
 Version 0.9 adds the brightness schedule and renames the app to GT6 Utility; the package stays `com.efran.buttons`.
@@ -100,13 +103,13 @@ The exported configuration provider accepts this app and EventCenter's UID; othe
 Earlier builds passed short physical camera/Home and Navi/ZLink tests on the GT6-CAR.
 On November 3, the user reported missed Voice presses and unintended Navi actions during longer use.
 Version 0.12 addressed identified gesture paths but still missed presses that lacked an MCU event.
-Version 0.13 adds the captured CAN signal. Quick presses and a one-second hold passed the parked check.
-Longer road use, another reboot, a full ignition cycle, and physical reverse transitions remain unverified for 0.13.
+Version 0.13 added the captured CAN signal. Quick presses and a one-second hold passed the parked check.
+Later road-use failures supersede that limited acceptance. Version 0.14 removes the fallback and leaves normal MCU handling.
 Separate long/double-press actions and Siri-specific commands remain unimplemented.
 
 ## Diagnostics and tests
 
-`./test.sh` passes 91 policy checks, 28 brightness schedule checks, and 112 Voice source checks.
+`./test.sh` passes 91 policy checks and 28 brightness schedule checks.
 The policy checks cover mapping, configuration expiry, packet decoding, Voice gestures, reverse protection, and camera/Home selection.
 These checks do not replace physical button tests.
 
@@ -159,7 +162,7 @@ Headlights: 0.9 had separate levels for headlights on and off. On the tested W20
 
 The hook change needs EventCenter to restart, or the headunit to reboot. `./test.sh` covers the schedule logic.
 
-## Voice reliability: 0.12 gesture fixes and 0.13 CAN fallback
+## Historical Voice fixes: 0.12 and 0.13
 
 The earlier adapter could release an accepted Voice gesture to stock handling when the camera changed MIPI mode.
 The firmware uses a shared saved button for hold/release handling. An old saved value can therefore trigger Navi from a Voice tail.
